@@ -12,6 +12,7 @@
 #import "XHMJ_ReplyAndPraiseTableViewCell.h"
 #import "XHMJ_PraiseTableViewCell.h"
 #import "UIView+Extension.h"
+#import "XHMJ_RoundScrollModel.h"
 
 #define collectionWidth self.photoCollectionView.frame.size.width
 #define collectionLeading 63
@@ -32,6 +33,8 @@ static NSString *replyCell = @"replyCell";
     NSMutableArray *commentHeightArr;
     NSMutableDictionary *commentHeightDic;
     CGFloat commentHeight;
+    BOOL isPraise;
+    NSMutableArray *photoArray;
 }
 
 - (void)awakeFromNib {
@@ -64,9 +67,12 @@ static NSString *replyCell = @"replyCell";
     [self.commentImg addGestureRecognizer:self.commentTapGesture];
     //配置TableView
     [self setTableView];
-
     //初始化commentHeightDic
     commentHeightDic = [[NSMutableDictionary alloc] init];
+    //隐藏删除按钮
+    self.deleteBtn.hidden = YES;
+    //初始化相册
+    photoArray = [NSMutableArray array];
 }
 
 - (void)setTableView{
@@ -78,6 +84,7 @@ static NSString *replyCell = @"replyCell";
     self.tableView.scrollEnabled = NO;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.backgroundColor = [UIColor clearColor];
+    self.tableView.hidden = YES;
 }
 
 - (void)setSelected:(BOOL)selected animated:(BOOL)animated {
@@ -92,47 +99,71 @@ static NSString *replyCell = @"replyCell";
         
         [self.headerImageView sd_setImageWithURL:[NSURL URLWithString:_model.showPic] placeholderImage:[UIImage imageNamed:@"guide_icon_head_placeholder"]];
         self.contentLabel.text = model.content;
+        self.contentHeightConstraint.constant = [self.contentLabel.text boundingRectWithSize:CGSizeMake(self.contentLabel.width, 960) options:NSStringDrawingUsesFontLeading | NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName:self.contentLabel.font} context:nil].size.height;
         self.dateLabel.text = model.time;
+        
+        //通过点赞信息切换PraiseImg图片
+        [_model.praiseList enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+            XHMJ_FootMarkPraiseModel *praiseModel = obj;
+            if ([praiseModel.userName isEqualToString:[PersonInfo sharedPerson].nickName]) {
+                self.praiseImg.highlighted = YES;
+            }
+        }];
         
         //设置照片数量
         if (_model.picCount>=0 && _model.picCount <=3) {
-            self.collectionViewHeightConstraint.constant = self.photoCollectionView.width / 3;
+            self.collectionViewHeightConstraint.constant = self.photoCollectionView.width / 3 + 20;
         }else if (_model.picCount >=4 && _model.picCount <= 6) {
-            self.collectionViewHeightConstraint.constant = self.photoCollectionView.width / 3 * 2;
+            self.collectionViewHeightConstraint.constant = self.photoCollectionView.width / 3 * 2 + 10;
         }else{
             self.collectionViewHeightConstraint.constant = self.photoCollectionView.width;
         }
         
         [self.photoCollectionView reloadData];
         
-        if (_model.praiseTotalNum != 0 && [_model.commentList count] != 0) {
+        if (_model.praiseList.count != 0 && [_model.commentList count] != 0) {
             self.replyStyle = footMarkReplyStyleWordAndPraise;
             self.tableView.hidden = NO;
-        }else if([_model.commentList count] != 0 && _model.praiseTotalNum == 0){
+        }else if([_model.commentList count] != 0 && _model.praiseList.count == 0){
             self.replyStyle = footMarkReplyStyleJustWord;
             self.tableView.hidden = NO;
-        }else if ([_model.commentList count] == 0 && _model.praiseTotalNum != 0){
+        }else if ([_model.commentList count] == 0 && _model.praiseList.count != 0){
             self.replyStyle = footMarkReplyStyleJustPraise;
             self.tableView.hidden = NO;
         }else{
             self.replyStyle = footMarkReplyStyleNone;
+            self.commentViewBottomConstraint.constant = 14;
         }
         
-        [self settingTableViewHeight];
+        if (self.replyStyle != footMarkReplyStyleNone) {
+            [self settingTableViewHeight];
+        }
+    }
+}
 
-        [self.tableView reloadData];
+- (void)setIndexPath:(NSIndexPath *)indexPath{
+    if (_indexPath != indexPath) {
+        _indexPath = indexPath;
     }
 }
 
 #pragma mark --- 根据点赞和评论配置tableView高度
 - (void)settingTableViewHeight{
     if(self.replyStyle != footMarkReplyStyleNone){
-        praiseHeight = [self heightToPraiseWithArray:_model.praiseList];
-        commentHeight = [self heightWithCommentList:_model.commentList];
-        CGFloat tableViewHeight = praiseHeight + commentHeight;
-        self.tableViewHeightConstraint.constant = tableViewHeight;
+        if (self.replyStyle == footMarkReplyStyleJustWord) {
+            commentHeight = [self heightWithCommentList:_model.commentList] + 10;
+            self.tableViewHeightConstraint.constant = commentHeight;
+        }else if(self.replyStyle == footMarkReplyStyleJustPraise){
+            praiseHeight = [self heightToPraiseWithArray:_model.praiseList];
+            self.tableViewHeightConstraint.constant = praiseHeight + 10;
+        }else if (self.replyStyle == footMarkReplyStyleWordAndPraise) {
+            praiseHeight = [self heightToPraiseWithArray:_model.praiseList];
+            commentHeight = [self heightWithCommentList:_model.commentList];
+            CGFloat tableViewHeight = praiseHeight + commentHeight+10;
+            self.tableViewHeightConstraint.constant = tableViewHeight;
+        }
     }else{
-        
+        self.tableView.hidden = YES;
     }
 }
 
@@ -143,11 +174,16 @@ static NSString *replyCell = @"replyCell";
 
 - (void)praiseGestureAction:(UIGestureRecognizer *)tapGesture{
     DLog(@"The praise");
+    self.praiseImg.highlighted = !self.praiseImg.highlighted;
+    self.commentAndPraiseView.hidden = !self.commentAndPraiseView.hidden;
+    isPraise = self.praiseImg.highlighted;
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"praiseFooterMark" object:self userInfo:@{@"class":self,
+                                                                                                          @"isPraise":[NSNumber numberWithBool:isPraise]}];
 }
 
 - (void)commentGestureAction:(UIGestureRecognizer *)tapGesture{
     DLog(@"The comment");
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"commentViewAppear" object:nil userInfo:@{@"class":self}];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"commentViewAppear" object:self userInfo:@{@"indexPath":self.indexPath}];
 }
 
 #pragma mark --- UITableViewDataSource
@@ -325,12 +361,53 @@ static NSString *replyCell = @"replyCell";
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    switch (self.replyStyle) {
+        case footMarkReplyStyleWordAndPraise:
+        {
+            [self wordAndPraisedeleteOrReplyAtIndex:indexPath];
+            break;
+        }
+        case footMarkReplyStyleJustWord:
+        {
+            [self justWordDeleteOrReplyAtIndex:indexPath];
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+- (void)wordAndPraisedeleteOrReplyAtIndex:(NSIndexPath *)indexPath{
     if (indexPath.section == 1) {
         XHMJ_FootMarkCommentModel *commentModel = _model.commentList[indexPath.row];
-        self.commentAndPraiseView.hidden = YES;
-        self.commentAndPraiseView.userInteractionEnabled = NO;
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"replyOtherPerson" object:self userInfo:@{@"commentModel":commentModel,
-                                                                                                              @"class":self}];
+        if ([commentModel.writerName isEqualToString:[PersonInfo sharedPerson].nickName]) {
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"deleteCommentNotification"
+                                                                object:self
+                                                              userInfo:@{@"commentModel":commentModel,
+                                                                         @"indexPath":self}];
+        }else{
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"replyOtherPerson"
+                                                                object:self
+                                                              userInfo:@{@"commentModel":commentModel,
+                                                                         @"indexPath":self.indexPath}];
+        }
+    }
+}
+
+- (void)justWordDeleteOrReplyAtIndex:(NSIndexPath *)indexPath{
+    if (indexPath.section == 0) {
+        XHMJ_FootMarkCommentModel *commentModel = _model.commentList[indexPath.row];
+        if ([commentModel.writerName isEqualToString:[PersonInfo sharedPerson].nickName]) {
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"deleteCommentNotification"
+                                                                object:self
+                                                              userInfo:@{@"commentModel":commentModel,
+                                                                         @"indexPath":self}];
+        }else{
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"replyOtherPerson"
+                                                                object:self
+                                                              userInfo:@{@"commentModel":commentModel,
+                                                                         @"indexPath":self.indexPath}];
+        }
     }
 }
 
@@ -358,6 +435,34 @@ static NSString *replyCell = @"replyCell";
     return CGSizeMake(width, height);
 }
 
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath{
+    [self.photoCollectionView deselectItemAtIndexPath:indexPath animated:YES];
+    
+    [self.model.picList enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+        XHMJ_FootMarkPictureModel *picModel = obj;
+        NSDictionary *dict = @{@"image_url":picModel.imgPathOri,
+                               @"image_title":@"",
+                               @"image_detailTitle":@"",
+                               @"entityType":@"",
+                               @"contentUrl":@"",
+                               @"linkUrl":@"",
+                               @"turntype":@"",
+                               @"entityId":[NSString stringWithFormat:@"%ld",(long)picModel.entityId],
+                               @"specialType":@"",
+                               @"imgPathBig":picModel.bigPicPath,
+                               @"imgPathOri":picModel.imgPathOri,
+                               @"imgPathSmail":picModel.smallPicPath,
+                               @"imgPathWatermark":@"",
+                               @"fileSize":[NSNumber numberWithFloat:0],
+                               @"workId":[NSString stringWithFormat:@"%ld",(long)picModel.idIOS]};
+        XHMJ_RoundScrollModel *model = [[XHMJ_RoundScrollModel alloc] initWithDic:dict];
+        [photoArray addObject:model];
+    }];
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"photoCollectionViewClick" object:self userInfo:@{@"picList":photoArray,
+                                                                                                                  @"indexPath":indexPath}];
+}
+
 #pragma mark --- 自适应高度
 //点赞部分高度
 - (CGFloat)heightToPraiseWithArray:(NSArray *)praiseArr{
@@ -382,6 +487,7 @@ static NSString *replyCell = @"replyCell";
 }
 
 - (IBAction)deleteMethod:(UIButton *)sender {
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"deleteNotification" object:nil userInfo:@{@"dynamicId":[NSString stringWithFormat:@"%ld",(long)_model.idIOS]}];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"deleteDynamicNotification" object:self userInfo:@{@"dynamicId":[NSString stringWithFormat:@"%ld",(long)_model.idIOS],
+                                                                                                                   @"class":self}];
 }
 @end
