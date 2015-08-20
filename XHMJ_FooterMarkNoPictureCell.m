@@ -11,6 +11,7 @@
 #import "XHMJ_ReplyAndPraiseTableViewCell.h"
 #import "XHMJ_PraiseTableViewCell.h"
 #import "UIView+Extension.h"
+#import "XHMJLoginViewController.h"
 
 static NSString *praiseCell = @"praiseCell";
 static NSString *replyCell = @"replyCell";
@@ -24,6 +25,7 @@ static NSString *replyCell = @"replyCell";
     CGFloat praiseHeight;
     NSMutableDictionary *commontHeightDic;
     CGFloat commentHeight;
+    BOOL isPraise;
 }
 
 - (void)awakeFromNib {
@@ -44,10 +46,15 @@ static NSString *replyCell = @"replyCell";
     self.commentBtn.userInteractionEnabled = YES;
     self.commentGesture = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(commentGestureAction:)];
     [self.commentBtn addGestureRecognizer:self.commentGesture];
+    //评论内容设置
+    self.contentLabel.lineBreakMode = NSLineBreakByCharWrapping;
+     self.contentLabel.numberOfLines = 0;
     //点赞和回复列表
     [self setTableView];
     //初始化高度字典
     commontHeightDic = [[NSMutableDictionary alloc] init];
+    //隐藏删除按键
+    self.deleteBtn.hidden = YES;
 }
 
 
@@ -73,57 +80,81 @@ static NSString *replyCell = @"replyCell";
         _model = model;
         [self.headerImageView sd_setImageWithURL:[NSURL URLWithString:_model.showPic] placeholderImage:[UIImage imageNamed:@"guide_icon_head_placeholder"]];
         self.contentLabel.text = _model.content;
-        self.contentLabel.height = [self.contentLabel.text boundingRectWithSize:CGSizeMake(self.contentLabel.width, 960) options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading attributes:@{NSFontAttributeName:self.contentLabel.font} context:nil].size.height;
+        self.contentHeightConstraint.constant = [self.contentLabel.text boundingRectWithSize:CGSizeMake(self.contentLabel.width, 960) options:NSStringDrawingUsesLineFragmentOrigin | NSStringDrawingUsesFontLeading attributes:@{NSFontAttributeName:self.contentLabel.font} context:nil].size.height;
         
         self.dateLabel.text = _model.time;
+        //通过点赞信息切换PraiseImg图片
+        [_model.praiseList enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+            XHMJ_FootMarkPraiseModel *praiseModel = obj;
+            if ([praiseModel.userName isEqualToString:[PersonInfo sharedPerson].nickName]) {
+                self.praiseBtn.highlighted = YES;
+            }
+        }];
         //评论和点赞列表
-        if (_model.praiseTotalNum != 0 && [_model.commentList count] != 0) {
+        if (_model.praiseList.count != 0 && [_model.commentList count] != 0) {
             self.replyStyle = footMarkReplyNoPictureStyleWordAndPraise;
             self.tableView.hidden = NO;
-        }else if([_model.commentList count] != 0 && _model.praiseTotalNum == 0){
+        }else if([_model.commentList count] != 0 && _model.praiseList.count == 0){
             self.replyStyle = footMarkReplyNoPictureStyleJustWord;
             self.tableView.hidden = NO;
-        }else if ([_model.commentList count] == 0 && _model.praiseTotalNum != 0){
+        }else if ([_model.commentList count] == 0 && _model.praiseList.count != 0){
             self.replyStyle = footMarkReplyNoPictureStyleJustPraise;
             self.tableView.hidden = NO;
         }else{
             self.replyStyle = footMarkReplyNoPictureStyleNone;
+            
+            self.commentAndPraiseBottomConstraint.constant = 14;
         }
         
-        [self settingTableViewHeight];
-        
-        [self.tableView reloadData];
+        if (self.replyStyle != footMarkReplyNoPictureStyleNone) {
+            [self settingTableViewHeight];
+        }
+    }
+}
+
+- (void)setIndexPath:(NSIndexPath *)indexPath{
+    if (_indexPath != indexPath) {
+        _indexPath = indexPath;
     }
 }
 
 #pragma mark --- 根据点赞和评论配置tableView高度
 - (void)settingTableViewHeight{
     if(self.replyStyle != footMarkReplyNoPictureStyleNone){
-        praiseHeight = [self heightToPraiseWithArray:_model.praiseList];
-        commentHeight = [self heightWithCommentList:_model.commentList];
-        CGFloat tableViewHeight = praiseHeight + commentHeight;
-        self.tableViewHeightConstraint.constant = tableViewHeight;
+        if (self.replyStyle == footMarkReplyNoPictureStyleJustWord) {
+            commentHeight = [self heightWithCommentList:_model.commentList] + 10;
+            self.tableViewHeightConstraint.constant = commentHeight;
+        }else if(self.replyStyle == footMarkReplyNoPictureStyleJustPraise){
+            praiseHeight = [self heightToPraiseWithArray:_model.praiseList];
+            self.tableViewHeightConstraint.constant = praiseHeight;
+        }else if (self.replyStyle == footMarkReplyNoPictureStyleWordAndPraise) {
+            praiseHeight = [self heightToPraiseWithArray:_model.praiseList];
+            commentHeight = [self heightWithCommentList:_model.commentList];
+            CGFloat tableViewHeight = praiseHeight + commentHeight+10;
+            self.tableViewHeightConstraint.constant = tableViewHeight;
+        }
     }else{
-
+        self.tableView.hidden = YES;
     }
 }
 
 #pragma mark --- 点赞和评论点击事件
 - (void)tapGestureAction:(UIGestureRecognizer *)tapGesture{
-    
     self.commentPraiseView.hidden = !self.commentPraiseView.hidden;
 }
 
 - (void)praiseGestureAction:(UIGestureRecognizer *)tapGesture{
-    DLog(@"The praise");
+    self.praiseBtn.highlighted = !self.praiseBtn.highlighted;
     self.commentPraiseView.hidden = !self.commentPraiseView.hidden;
-//    [[NSNotificationCenter defaultCenter] postNotificationName:@"praiseFooterMark" object:nil userInfo:@{@"footerMarkModel":self.model,@"":}];
+//    self.praiseBtn.highlighted = !self.praiseBtn.highlighted;
+    isPraise = self.praiseBtn.highlighted;
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"praiseFooterMark" object:self userInfo:@{@"class":self,
+                                                                                                          @"isPraise":[NSNumber numberWithBool:isPraise]}];
 }
 
 - (void)commentGestureAction:(UIGestureRecognizer *)tapGesture{
-    DLog(@"The comment");
     self.commentPraiseView.hidden = !self.commentPraiseView.hidden;
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"commentViewAppear" object:nil userInfo:@{@"class":self}];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"commentViewAppear" object:self userInfo:@{@"indexPath":self.indexPath}];
 }
 
 #pragma mark --- TableViewDataSource
@@ -162,6 +193,7 @@ static NSString *replyCell = @"replyCell";
             }else{
                 return [self.model.commentList count];
             }
+            break;
         }
         case footMarkReplyNoPictureStyleJustWord:
         {
@@ -200,11 +232,10 @@ static NSString *replyCell = @"replyCell";
                     cell = (XHMJ_ReplyAndPraiseTableViewCell *)[[[NSBundle mainBundle] loadNibNamed:@"XHMJ_ReplyAndPraiseTableViewCell" owner:nil options:nil] lastObject];
                     XHMJ_FootMarkCommentModel *model = _model.commentList[indexPath.row];
                     cell.commentModel = model;
-                    
                 }
                 return cell;
             }
-            break;
+            break;      
         }
         case footMarkReplyNoPictureStyleJustPraise:
         {
@@ -276,10 +307,41 @@ static NSString *replyCell = @"replyCell";
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section{
-    if (section == 1) {
-        UIView *line = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 0.5)];
-        line.backgroundColor = [UIColor grayColor];
-        return line;
+    switch (self.replyStyle) {
+        case footMarkReplyNoPictureStyleWordAndPraise:
+        {
+            if (section == 1) {
+                UIView *line = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 0.5)];
+                line.backgroundColor = [UIColor grayColor];
+                return line;
+            }
+            break;
+        }
+        case footMarkReplyNoPictureStyleJustPraise:
+        {
+            if (section == 1) {
+                UIView *line = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 0.5)];
+                line.backgroundColor = [UIColor clearColor];
+                return line;
+            }
+        }
+            break;
+        case footMarkReplyNoPictureStyleJustWord:
+        {
+            if (section == 1) {
+                UIView *line = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 0.5)];
+                line.backgroundColor = [UIColor clearColor];
+                return line;
+            }
+        }
+            break;
+        case footMarkReplyNoPictureStyleNone:
+        {
+            return nil;
+        }
+            break;
+        default:
+            break;
     }
     return nil;
 }
@@ -291,7 +353,7 @@ static NSString *replyCell = @"replyCell";
 - (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section{
     if (section == 0) {
         UIView *line = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 0.5)];
-        line.backgroundColor = [UIColor grayColor];
+        line.backgroundColor = [UIColor clearColor];
         return line;
     }
     return nil;
@@ -300,10 +362,53 @@ static NSString *replyCell = @"replyCell";
 #pragma mark --- UITableViewDelegate
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    switch (self.replyStyle) {
+        case footMarkReplyNoPictureStyleWordAndPraise:
+        {
+            [self wordAndPraisedeleteOrReplyAtIndex:indexPath];
+            break;
+        }
+        case footMarkReplyNoPictureStyleJustWord:
+        {
+            [self justWordDeleteOrReplyAtIndex:indexPath];
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+- (void)wordAndPraisedeleteOrReplyAtIndex:(NSIndexPath *)indexPath{
     if (indexPath.section == 1) {
         XHMJ_FootMarkCommentModel *commentModel = _model.commentList[indexPath.row];
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"replyOtherPerson" object:self userInfo:@{@"commentModel":commentModel,
-                                                                                                              @"class":self}];
+        if ([commentModel.writerName isEqualToString:[PersonInfo sharedPerson].nickName]) {
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"deleteCommentNotification"
+                                                                object:self
+                                                              userInfo:@{@"commentModel":commentModel,
+                                                                         @"class":self}];
+        }else{
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"replyOtherPerson"
+                                                                object:self
+                                                              userInfo:@{@"commentModel":commentModel,
+                                                                         @"indexPath":self.indexPath}];
+        }
+    }
+}
+
+- (void)justWordDeleteOrReplyAtIndex:(NSIndexPath *)indexPath{
+    if (indexPath.section == 0) {
+        XHMJ_FootMarkCommentModel *commentModel = _model.commentList[indexPath.row];
+        if ([commentModel.writerName isEqualToString:[PersonInfo sharedPerson].nickName]) {
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"deleteCommentNotification"
+                                                                object:self
+                                                              userInfo:@{@"commentModel":commentModel,
+                                                                         @"class":self}];
+        }else{
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"replyOtherPerson"
+                                                                object:self
+                                                              userInfo:@{@"commentModel":commentModel,
+                                                                         @"indexPath":self.indexPath}];
+        }
     }
 }
 
@@ -331,6 +436,7 @@ static NSString *replyCell = @"replyCell";
 }
 
 - (IBAction)deleteMethod:(UIButton *)sender {
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"deleteNotification" object:nil userInfo:@{@"dynamicId":[NSString stringWithFormat:@"%ld",(long)_model.idIOS]}];
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"deleteDynamicNotification" object:self userInfo:@{@"dynamicId":[NSString stringWithFormat:@"%ld",(long)_model.idIOS],
+                                                                                                                  @"class":self}];
 }
 @end
