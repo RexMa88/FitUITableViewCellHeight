@@ -18,6 +18,7 @@
 - (void)awakeFromNib {
     // Initialization code
     [super awakeFromNib];
+    self.backgroundColor = [UIColor yellowColor];
     self.replyLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, 1,kWidth - marginConstraint - 16 , 17)];
     self.replyLabel.backgroundColor = [UIColor clearColor];
     self.replyLabel.numberOfLines = 0;
@@ -33,7 +34,8 @@
 - (void)setCommentModel:(XHMJ_FootMarkCommentModel *)commentModel{
     if (_commentModel != commentModel) {
         _commentModel = commentModel;
-        if (_commentModel.pwriterId == 0) {
+        self.replyLabel.attributedText = [[NSAttributedString alloc] initWithString:@""];
+        if (!TextValid(_commentModel.pwriterName)) {
             //当没有人回复,只评论时
             NSString *reply = [NSString stringWithFormat:@"%@:%@",_commentModel.writerName,_commentModel.context];
             
