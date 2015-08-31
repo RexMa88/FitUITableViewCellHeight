@@ -2,7 +2,7 @@
 //  XHMJ_FootmarkController.m
 //  chinapainting
 //
-//  Created by 新华视讯 on 15/8/3.
+//  Created by RexMa on 15/8/3.
 //  Copyright (c) 2015年 XinHuaTV. All rights reserved.
 //
 
