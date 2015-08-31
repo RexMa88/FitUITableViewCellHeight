@@ -90,7 +90,7 @@ typedef enum FootMarkDeleteDynamicStyle{
 
 @property (strong, nonatomic) NSMutableArray *photoArray;//图片数组
 
-@property (strong, nonatomic) NSCache *heightCache;
+@property (strong, nonatomic) NSCache *heightCache;//高度缓存
 
 @property (strong, nonatomic) NSCache *cellCache;
 
@@ -131,6 +131,8 @@ typedef enum FootMarkDeleteDynamicStyle{
     self.photoArray = [[NSMutableArray alloc] init];
     //高度Cache初始化
     self.heightCache = [[NSCache alloc] init];
+    //TableViewCell的缓存Cache
+    self.cellCache = [[NSCache alloc] init];
 }
 
 - (void)touchesBegan:(NSSet *)touches withEvent:(UIEvent *)event{
@@ -207,7 +209,6 @@ typedef enum FootMarkDeleteDynamicStyle{
 }
 
 #pragma mark --- 点击相册动态
-
 - (void)photoCollectionViewClickNotification:(NSNotification *)notification{
     if ([notification.object isKindOfClass:[XHMJ_FooterMarkCommonCell class]]) {
         self.dealIndexPath = [notification.userInfo objectForKey:@"indexPath"];
@@ -232,14 +233,14 @@ typedef enum FootMarkDeleteDynamicStyle{
         self.cellStyle = FootMarkCellStyleNoPicture;
         self.footmarkdeleteStyle = XHMJFootMarkDeleteStyleNoPicture;
         self.replyModel = [[notification userInfo] objectForKey:@"commentModel"];
-        self.noPictureCell = [[notification userInfo] objectForKey:@"class"];
-        self.dealIndexPath = [self.tableView indexPathForCell:self.noPictureCell];
+        self.dealIndexPath = [[notification userInfo] objectForKey:@"indexPath"];
+        self.commentModel = [self.footMarklistRequest footMarkModelAtIndex:self.dealIndexPath.row];
     }else{
         self.cellStyle = FootMarkCellStyleCommon;
         self.footmarkdeleteStyle = XHMJFootMarkDeleteStyleCommon;
         self.replyModel = [[notification userInfo] objectForKey:@"commentModel"];
-        self.commonCell = [[notification userInfo] objectForKey:@"class"];
-        self.dealIndexPath = [self.tableView indexPathForCell:self.commonCell];
+        self.dealIndexPath = [[notification userInfo] objectForKey:@"indexPath"];
+        self.commentModel = [self.footMarklistRequest footMarkModelAtIndex:self.dealIndexPath.row];
     }
     [self.actionSheet showInView:self.view];
 }
@@ -250,10 +251,10 @@ typedef enum FootMarkDeleteDynamicStyle{
 
 - (void)deleteDynamicCommentWithDic:(NSDictionary *)dict{
     if ([dict[@"success"] integerValue] == [kSucessStr integerValue]) {
-        XHMJ_FootMarkModel *model = [self.footMarklistRequest footMarkModelAtIndex:self.dealIndexPath.row];
-        [self.footMarklistRequest removeCommentWith:model With:self.replyModel];
-        NSString *heightKey = [NSString stringWithFormat:@"height-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
-        [self.heightCache removeObjectForKey:heightKey];
+        [self.footMarklistRequest removeCommentWith:self.commentModel With:self.replyModel];
+        [self calculateHeightInRow:self.dealIndexPath];
+        NSString *cellKey = [NSString stringWithFormat:@"cell-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
+        [self.cellCache removeObjectForKey:cellKey];
         
         [self.tableView beginUpdates];
         [self.tableView reloadRowsAtIndexPaths:@[_dealIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
@@ -313,6 +314,7 @@ typedef enum FootMarkDeleteDynamicStyle{
 
 - (void)dePraiseStatus:(NSDictionary *)dict{
     if ([[dict objectForKey:@"success"] integerValue] == [kSucessStr integerValue]) {
+//        XHMJ_FootMarkModel *model = [self.footMarklistRequest footMarkModelAtIndex:self.dealIndexPath.row];
         //无图足迹取消点赞
         if (self.footmarkDePraiseStyle == XHMJFootmarkDePraiseStyleNoPicture) {
             [self.noPictureCell.model.praiseList enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
@@ -321,8 +323,9 @@ typedef enum FootMarkDeleteDynamicStyle{
                     [self.footMarklistRequest removePraiseWith:self.noPictureCell.model WithPraiseModel:praiseModel];
                 }
             }];
-            NSString *heightKey = [NSString stringWithFormat:@"height-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
-            [self.heightCache removeObjectForKey:heightKey];
+            [self calculateHeightInRow:self.dealIndexPath];
+            NSString *cellKey = [NSString stringWithFormat:@"cell-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
+            [self.cellCache removeObjectForKey:cellKey];
             
             [self.tableView beginUpdates];
             [self.tableView reloadRowsAtIndexPaths:@[self.dealIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
@@ -334,8 +337,9 @@ typedef enum FootMarkDeleteDynamicStyle{
                     [self.footMarklistRequest removePraiseWith:self.commonCell.model WithPraiseModel:praiseModel];
                 }
             }];
-            NSString *heightKey = [NSString stringWithFormat:@"height-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
-            [self.heightCache removeObjectForKey:heightKey];
+            [self calculateHeightInRow:self.dealIndexPath];
+            NSString *cellKey = [NSString stringWithFormat:@"cell-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
+            [self.cellCache removeObjectForKey:cellKey];
             
             [self.tableView beginUpdates];
             [self.tableView reloadRowsAtIndexPaths:@[self.dealIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
@@ -356,8 +360,9 @@ typedef enum FootMarkDeleteDynamicStyle{
                                    @"userName":[PersonInfo sharedPerson].nickName};
             XHMJ_FootMarkPraiseModel *praiseModel = [[XHMJ_FootMarkPraiseModel alloc] initWithDic:dict];
             [self.footMarklistRequest addPraiseWith:self.noPictureCell.model WithPraiseModel:praiseModel];
-            NSString *heightKey = [NSString stringWithFormat:@"height-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
-            [self.heightCache removeObjectForKey:heightKey];
+            [self calculateHeightInRow:self.dealIndexPath];
+            NSString *cellKey = [NSString stringWithFormat:@"cell-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
+            [self.cellCache removeObjectForKey:cellKey];
             
             [self.tableView beginUpdates];
             [self.tableView reloadRowsAtIndexPaths:@[self.dealIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
@@ -370,8 +375,9 @@ typedef enum FootMarkDeleteDynamicStyle{
                                    @"userName":[PersonInfo sharedPerson].nickName};
             XHMJ_FootMarkPraiseModel *praiseModel = [[XHMJ_FootMarkPraiseModel alloc] initWithDic:dict];
             [self.footMarklistRequest addPraiseWith:self.commonCell.model WithPraiseModel:praiseModel];
-            NSString *heightKey = [NSString stringWithFormat:@"height-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
-            [self.heightCache removeObjectForKey:heightKey];
+            [self calculateHeightInRow:self.dealIndexPath];
+            NSString *cellKey = [NSString stringWithFormat:@"cell-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
+            [self.cellCache removeObjectForKey:cellKey];
             
             [self.tableView beginUpdates];
             [self.tableView reloadRowsAtIndexPaths:@[self.dealIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
@@ -457,11 +463,11 @@ typedef enum FootMarkDeleteDynamicStyle{
         self.commentView.textView.text = @"";
         if (self.footmarkReplyStyle == XHMJFootMarkCommentStyleReply) {
             
-            NSDictionary *dic = @{@"content":textView.text,
+            NSDictionary *dic = @{@"content":self.sendMessage,
                                   @"writerName":[PersonInfo sharedPerson].nickName,
                                   @"dynamicId":[NSString stringWithFormat:@"%ld",(long)self.commentModel.idIOS],
                                   @"showPic":[PersonInfo sharedPerson].head_portraitUrl,
-                                  @"parentId":[NSString stringWithFormat:@"%ld",(long)self.replyModel.parentId]};
+                                  @"parentId":[NSString stringWithFormat:@"%ld",(long)self.replyModel.idIOS]};
             XHMJ_FootMarkCommentData *data = [[XHMJ_FootMarkCommentData alloc] initWithDic:dic];
             data.delegate = self;
             [data footerMarkReplyInfoRequest];
@@ -514,9 +520,10 @@ typedef enum FootMarkDeleteDynamicStyle{
             }else{
                 [self.footMarklistRequest addCommentAtIndexPath:self.dealIndexPath WithCommentModel:model];
             }
-            NSString *heightKey = [NSString stringWithFormat:@"height-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
-            [self.heightCache removeObjectForKey:heightKey];
-
+            [self calculateHeightInRow:self.dealIndexPath];
+            NSString *cellKey = [NSString stringWithFormat:@"cell-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
+            [self.cellCache removeObjectForKey:cellKey];
+            
             [self.tableView beginUpdates];
             [self.tableView reloadRowsAtIndexPaths:@[self.dealIndexPath] withRowAnimation:UITableViewRowAnimationNone];
             [self.tableView endUpdates];
@@ -548,8 +555,9 @@ typedef enum FootMarkDeleteDynamicStyle{
             }else{
                 [self.footMarklistRequest addCommentAtIndexPath:self.dealIndexPath WithCommentModel:model];
             }
-            NSString *heightKey = [NSString stringWithFormat:@"height-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
-            [self.heightCache removeObjectForKey:heightKey];
+            [self calculateHeightInRow:self.dealIndexPath];
+            NSString *cellKey = [NSString stringWithFormat:@"cell-%ld-%ld",(long)self.dealIndexPath.section,(long)self.dealIndexPath.row];
+            [self.cellCache removeObjectForKey:cellKey];
             
             [self.tableView beginUpdates];
             [self.tableView reloadRowsAtIndexPaths:@[_dealIndexPath] withRowAnimation:UITableViewRowAnimationAutomatic];
@@ -566,7 +574,6 @@ typedef enum FootMarkDeleteDynamicStyle{
         [self.commentView.textView resignFirstResponder];
         self.commentView.textView.text = @"";
         if (self.footmarkReplyStyle == XHMJFootMarkCommentStyleReply) {
-            
             NSDictionary *dic = @{@"content":senderStr,
                                   @"writerName":[PersonInfo sharedPerson].nickName,
                                   @"dynamicId":[NSString stringWithFormat:@"%ld",(long)self.commentModel.idIOS],
@@ -626,7 +633,8 @@ typedef enum FootMarkDeleteDynamicStyle{
     self.footmarkReplyStyle = XHMJFootMarkCommentStyleNone;
     self.footmarkDePraiseStyle = XHMJFootmarkDePraiseStyleNone;
     self.cellStyle = FootMarkCellStyleNone;
-    [self.footMarklistRequest removeAllModel];
+    [self.heightCache removeAllObjects];
+    [self.cellCache removeAllObjects];
     [self.tableView tableViewStartLoadingData];
 }
 
@@ -667,10 +675,11 @@ typedef enum FootMarkDeleteDynamicStyle{
     /**
      *  添加评论刷新
      */
-    if (self.footmarkReplyStyle == XHMJFootMarkCommentStyleComment || self.footmarkReplyStyle == XHMJFootMarkCommentStyleReply || self.footmarkdeleteStyle == XHMJFootMarkDeleteStyleNoPicture || self.footmarkdeleteStyle == XHMJFootMarkDeleteStyleCommon || self.footmarkPraiseStyle == XHMJFootMarkPraiseStyleCommon || self.footmarkPraiseStyle == XHMJFootMarkPraiseStyleNoPicture || self.footmarkDePraiseStyle == XHMJFootmarkDePraiseStyleNoPicture || self.footmarkDePraiseStyle == XHMJFootmarkDePraiseStyleCommon) {
-        XHMJ_FootMarkModel *model = [self.footMarklistRequest footMarkModelAtIndex:self.dealIndexPath.row];
-        
-        if (model.picList.count == 0) {
+    NSString *cellKey = [NSString stringWithFormat:@"cell-%ld-%ld",(long)indexPath.section,(long)indexPath.row];
+    XHMJ_FootMarkModel *model = [self.footMarklistRequest footMarkModelAtIndex:indexPath.row];
+    if (model.picList.count == 0) {
+        XHMJ_FooterMarkNoPictureCell *cacheCell = [self.cellCache objectForKey:cellKey];
+        if (!cacheCell) {
             XHMJ_FooterMarkNoPictureCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FooterMarkNoPictureCell"];
             
             if (cell == nil) {
@@ -678,12 +687,26 @@ typedef enum FootMarkDeleteDynamicStyle{
                 if ([self.artistID integerValue] ==[[PersonInfo sharedPerson].userId integerValue]){
                     cell.deleteBtn.hidden = NO;
                 }
-                cell.indexPath = self.dealIndexPath;
-                cell.model = model;
-                cell.nameLabel.text = self.artistName;
-                return cell;
             }
+            if (self.dealIndexPath) {
+                cell = (XHMJ_FooterMarkNoPictureCell *)[[[NSBundle mainBundle] loadNibNamed:@"XHMJ_FooterMarkTableViewCell" owner:nil options:nil] lastObject];
+                if ([self.artistID integerValue] ==[[PersonInfo sharedPerson].userId integerValue]){
+                    cell.deleteBtn.hidden = NO;
+                }
+            }
+            cell.indexPath = indexPath;
+            cell.model = model;
+            cell.nameLabel.text = self.artistName;
+            [self.cellCache setObject:cell forKey:cellKey];
+            
+            return cell;
         }else{
+            return cacheCell;
+        }
+    }else{
+        XHMJ_FooterMarkCommonCell *cacheCell = [self.cellCache objectForKey:cellKey];
+        
+        if (!cacheCell) {
             XHMJ_FooterMarkCommonCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FooterMarkCommonCell"];
             
             if (cell == nil) {
@@ -692,45 +715,21 @@ typedef enum FootMarkDeleteDynamicStyle{
                     cell.deleteBtn.hidden = NO;
                 }
             }
-            cell.indexPath = self.dealIndexPath;
+            if (self.dealIndexPath) {
+                cell = (XHMJ_FooterMarkCommonCell *)[[[NSBundle mainBundle] loadNibNamed:@"XHMJ_FooterMarkCommonCell" owner:nil options:nil] lastObject];
+                if ([self.artistID integerValue] ==[[PersonInfo sharedPerson].userId integerValue]){
+                    cell.deleteBtn.hidden = NO;
+                }
+            }
+            cell.indexPath = indexPath;
             cell.model = model;
             cell.nameLabel.text = self.artistName;
+            [self.cellCache setObject:cell forKey:cellKey];
             
             return cell;
+        }else{
+            return cacheCell;
         }
-    }
-    
-    XHMJ_FootMarkModel *model = [self.footMarklistRequest footMarkModelAtIndex:indexPath.row];
-   
-    if (model.picList.count == 0) {
-        
-        XHMJ_FooterMarkNoPictureCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FooterMarkNoPictureCell"];
-    
-        if (cell == nil) {
-            cell = (XHMJ_FooterMarkNoPictureCell *)[[[NSBundle mainBundle] loadNibNamed:@"XHMJ_FooterMarkTableViewCell" owner:nil options:nil] lastObject];
-        }
-        if ([self.artistID integerValue] ==[[PersonInfo sharedPerson].userId integerValue]){
-            cell.deleteBtn.hidden = NO;
-        }
-        cell.indexPath = indexPath;
-        cell.model = model;
-        cell.nameLabel.text = self.artistName;
-        return cell;
-    }else{
-        
-        XHMJ_FooterMarkCommonCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FooterMarkCommonCell"];
-        
-        if (cell == nil) {
-            cell = (XHMJ_FooterMarkCommonCell *)[[[NSBundle mainBundle] loadNibNamed:@"XHMJ_FooterMarkCommonCell" owner:nil options:nil] lastObject];
-        }
-        if ([self.artistID integerValue] ==[[PersonInfo sharedPerson].userId integerValue]){
-            cell.deleteBtn.hidden = NO;
-        }
-        cell.indexPath = indexPath;
-        cell.model = model;
-        cell.nameLabel.text = self.artistName;
-        
-        return cell;
     }
 }
 
@@ -761,7 +760,7 @@ typedef enum FootMarkDeleteDynamicStyle{
         [cell layoutIfNeeded];
         
         if (cell.replyStyle == footMarkReplyStyleJustPraise) {
-            CGFloat height = cell.tableView.y + cell.tableView.height + 9;
+            CGFloat height = CGRectGetMaxY(cell.tableView.frame) + 9;
             [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
             return height;
         }
@@ -771,10 +770,11 @@ typedef enum FootMarkDeleteDynamicStyle{
             [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
             return height;
         }
-        
-        CGFloat height = cell.tableView.y + cell.tableView.height + 9;
-        
-        return height;
+        else{
+            CGFloat height = CGRectGetMaxY(cell.tableView.frame) + 9;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
+            return height;
+        }
     }else{
         XHMJ_FooterMarkCommonCell *cell = (XHMJ_FooterMarkCommonCell *)[[[NSBundle mainBundle] loadNibNamed:@"XHMJ_FooterMarkCommonCell" owner:nil options:nil] lastObject];
         
@@ -787,16 +787,76 @@ typedef enum FootMarkDeleteDynamicStyle{
         [cell layoutIfNeeded];
         
         if (cell.replyStyle == footMarkReplyStyleJustPraise) {
-            return cell.tableView.y + cell.tableView.height + 9;
+            CGFloat height = CGRectGetMaxY(cell.tableView.frame) + 9;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
+            return height;
         }
         
         if (cell.replyStyle == footMarkReplyNoPictureStyleNone) {
-            return cell.commentImageView.y + cell.commentImageView.height + cell.commentViewBottomConstraint.constant;
+            CGFloat height = cell.commentImageView.y + cell.commentImageView.height + cell.commentViewBottomConstraint.constant;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
+            return height;
+        }else{
+            CGFloat height = CGRectGetMaxY(cell.tableView.frame) + 9;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
+            return height;
+        }
+    }
+}
+
+- (void)calculateHeightInRow:(NSIndexPath *)indexPath{
+    NSString *heightKey = [NSString stringWithFormat:@"height-%ld-%ld",(long)indexPath.section,(long)indexPath.row];
+    
+    XHMJ_FootMarkModel *model = [self.footMarklistRequest footMarkModelAtIndex:indexPath.row];
+    if (model.picList.count == 0) {
+        XHMJ_FooterMarkNoPictureCell *cell = (XHMJ_FooterMarkNoPictureCell *)[[[NSBundle mainBundle] loadNibNamed:@"XHMJ_FooterMarkTableViewCell" owner:nil options:nil] lastObject];
+        cell.model = model;
+        cell.nameLabel.text = self.artistName;
+        
+        //让cell进行layout
+        [cell setNeedsUpdateConstraints];
+        [cell updateConstraintsIfNeeded];
+        [cell setNeedsLayout];
+        [cell layoutIfNeeded];
+        
+        if (cell.replyStyle == footMarkReplyStyleJustPraise) {
+            CGFloat height = cell.tableView.y + cell.tableView.height + 9;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
         }
         
-        CGFloat height = cell.tableView.y + cell.tableView.height + 9;
+        if (cell.replyStyle == footMarkReplyNoPictureStyleNone) {
+            CGFloat height = cell.commentImageView.y + cell.commentImageView.height + cell.commentAndPraiseBottomConstraint.constant;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
+        }
         
-        return height;
+        else{
+            CGFloat height = cell.tableView.y + cell.tableView.height + 9;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
+        }
+    }else{
+        XHMJ_FooterMarkCommonCell *cell = (XHMJ_FooterMarkCommonCell *)[[[NSBundle mainBundle] loadNibNamed:@"XHMJ_FooterMarkCommonCell" owner:nil options:nil] lastObject];
+        
+        cell.model = model;
+        cell.nameLabel.text = self.artistName;
+        
+        [cell setNeedsUpdateConstraints];
+        [cell updateConstraintsIfNeeded];
+        [cell setNeedsLayout];
+        [cell layoutIfNeeded];
+        
+        if (cell.replyStyle == footMarkReplyStyleJustPraise) {
+            CGFloat height = cell.tableView.y + cell.tableView.height + 9;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
+        }
+        
+        if (cell.replyStyle == footMarkReplyNoPictureStyleNone) {
+            CGFloat height = cell.commentImageView.y + cell.commentImageView.height + cell.commentViewBottomConstraint.constant;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
+        }
+        else{
+            CGFloat height = cell.tableView.y + cell.tableView.height + 9;
+            [self.heightCache setObject:[NSNumber numberWithFloat:height] forKey:heightKey];
+        }
     }
 }
 
